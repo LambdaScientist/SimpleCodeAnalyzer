@@ -21,17 +21,25 @@ getCycloComp graph = edges - nodes + p
     edges = 1 + (length.labEdges) graph
     p = 1
 
-makeReport :: (Show a, Show b, Monad m) => Gr a b -> LaTeXT_ m
-makeReport graph = do
+makeReport :: (Show a, Show b, Monad m) => Gr a b -> String -> LaTeXT_ m
+makeReport graph name = do
   documentclass [] article
-  document $ do fromString "The Cyclomatic Complexity for this software is: "
+  raw.fromString $ "\\usepackage[pdftex]{graphicx}"
+  raw.fromString $ "\\usepackage{graphviz}"
+  document $ do
+                fromString "The Cyclomatic Complexity for this software is: "
                 (fromString.show) $ getCycloComp graph
+                newline
+                raw.fromString $ "\\includedot[scale=0.20]{" ++ dotName ++ "}"
+  where
+    dotName = name ++ "Dot"
 
 writeReport :: (Show a, Show b) => Gr a b -> String -> IO ()
-writeReport graph name = execLaTeXT report >>= renderFile fileName
+writeReport graph name = execLaTeXT report >>= renderFile fileName >> graph2dot dotName graph
   where
-    report = makeReport graph
+    report = makeReport graph name
     fileName = name ++ ".tex"
+    dotName = name ++ "Dot"
 
 genLNodes :: [LNode String]
 genLNodes = zip [1..5] ["A","B","C","D","E"]
@@ -65,6 +73,5 @@ testCycloReport :: Int -> IO ()
 testCycloReport 0 = return ()
 testCycloReport testNum = do graph <- testGraph
                              let fileName = show testNum
-                             writeReport graph ("test_" ++ fileName ++ "_results")
-                             graph2dot fileName graph
+                             writeReport graph fileName
                              testCycloReport $testNum - 1
