@@ -9,6 +9,7 @@ import Data.Graph.Inductive.Arbitrary
 import Test.QuickCheck
 
 import Text.LaTeX
+import Text.LaTeX.Packages.Beamer
 import Data.String
 
 graph2dot :: (Show a, Show b) => String -> Gr a b -> IO ()
@@ -21,26 +22,42 @@ getCycloComp graph = edges - nodes + p
     edges = 1 + (length.labEdges) graph
     p = 1
 
-makeReport :: (Show a, Show b, Monad m) => Gr a b -> String -> LaTeXT_ m
-makeReport graph name = do
-  documentclass [] article
-  raw.fromString $ "\\usepackage[pdftex]{graphicx}"
-  raw.fromString $ "\\usepackage{graphviz}"
-  document $ do
-                fromString "The Cyclomatic Complexity for this software is: "
-                (fromString.show) $ getCycloComp graph
-                newline
-                raw.fromString $ "\\includedot[scale=0.20]{" ++ dotName ++ "}"
+addGraphDoc :: (Monad m) => String -> LaTeXT_ m
+addGraphDoc name = (frame.raw.fromString) $ "\\includedot[scale=0.20]{" ++ dotName ++ "}"
   where
     dotName = name ++ "Dot"
 
-writeReport :: (Show a, Show b) => Gr a b -> String -> IO ()
-writeReport graph name = execLaTeXT report >>= renderFile fileName >> graph2dot dotName graph
+makeReport ::(Show a, Show b, Monad m) => Gr a b -> LaTeXT_ m
+makeReport graph = frame $ do fromString "The Cyclomatic Complexity for this software is: "
+                              (fromString.show) $ getCycloComp graph
+
+reportOnly :: (Show a, Show b, Monad m) => Gr a b -> LaTeXT_ m
+reportOnly graph = documentclass [] beamer <> doc
   where
-    report = makeReport graph name
+    report = makeReport graph
+    doc = document report
+
+docAndGraph :: (Show a, Show b, Monad m) => Gr a b -> String -> LaTeXT_ m
+docAndGraph graph reportName = do documentclass [] beamer
+                                  raw.fromString $ "\\usepackage[pdftex]{graphicx}"
+                                  raw.fromString $ "\\usepackage{graphviz}"
+                                  doc
+  where
+    report = makeReport graph
+    reportGraph = addGraphDoc reportName
+    doc = document $ do (reportGraph <> report)
+
+
+writeReport :: String ->  LaTeXT IO () -> IO ()
+writeReport name report = createLatex >>= renderFile fileName
+  where
+    createLatex = execLaTeXT report
     fileName = name ++ ".tex"
-    dotName = name ++ "Dot"
 
+
+------------
+--Hand Examples
+------------
 genLNodes :: [LNode String]
 genLNodes = zip [1..5] ["A","B","C","D","E"]
 
@@ -57,12 +74,17 @@ exampleCycloComp :: Int
 exampleCycloComp = getCycloComp mygraph
 
 exampleCycloReport :: IO ()
-exampleCycloReport = writeReport mygraph "simple"
+exampleCycloReport = graph2dot "exampleGraph" mygraph
+                  >> (writeReport "exampleReport" $ reportOnly mygraph)
+
+exampleCycloReportGraph :: IO ()
+exampleCycloReportGraph = graph2dot "exampleGraphDot" mygraph
+                       >> (writeReport "exampleReport" $ docAndGraph mygraph "exampleGraph")
 
 
-
-
-
+------------
+--QuickCheck
+------------
 testGraph ::  IO (Gr String Char)
 testGraph = connArbGraph <$> generate arbitrary
 
@@ -72,6 +94,15 @@ testDot = testGraph >>= graph2dot "test"
 testCycloReport :: Int -> IO ()
 testCycloReport 0 = return ()
 testCycloReport testNum = do graph <- testGraph
-                             let fileName = show testNum
-                             writeReport graph fileName
-                             testCycloReport $testNum - 1
+                             let reportName = show testNum
+                             graph2dot reportName graph
+                             writeReport reportName $ reportOnly graph
+                             testCycloReport $ testNum - 1
+
+testCycloReportGraph :: Int -> IO ()
+testCycloReportGraph 0 = return ()
+testCycloReportGraph testNum = do graph <- testGraph
+                                  let reportName = show testNum
+                                  graph2dot (reportName ++ "Dot") graph
+                                  writeReport reportName $ docAndGraph graph reportName
+                                  testCycloReportGraph $ testNum - 1
